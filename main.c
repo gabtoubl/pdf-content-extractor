@@ -10,15 +10,45 @@
 ** of this letter in the PATTERN is replaced by the same letter each time.
 */
 
-/* preCompute a string 'str' into an array of distance 'render' */
-int *preCompute(char *str, int len) {
+void printRender(int *render, int len) {
+  int i;
+
+  printf("[");
+  for (i = 0 ; i < len; ++i) {
+    if (i)
+      printf(" ");
+    printf("%d", render[i]);
+  }
+  printf("]\n");
+}
+
+int simplifyRules(int *render, int len) {
+  int i, change;
+
+  for (change = 1; change;) {
+    change = 0;
+    for (i = 0; i < len; ++i) {
+      if (render[i] > 0 && !render[len - 1]
+	  && render[i] + i == len - 1) {
+	change = 1;
+	--len;
+      }
+    }
+  }
+  if (render[len - 1] == 0)
+    --len;
+  printRender(render, len);
+  return len;
+}
+
+int *preCompute(char *str, int len, int *len2) {
   int *render;
   int occur[256];
   int i;
 
   for (i = 0; i < 256; ++i)
     occur[i] = 0;
-  if ((render = malloc(sizeof(*render) * len)) == NULL)
+  if ((render = malloc(sizeof(int) * len)) == NULL)
     return NULL;
   for (i = len - 1; i >= 0; --i) {
     if (occur[(int)str[i]])
@@ -27,10 +57,10 @@ int *preCompute(char *str, int len) {
       render[i] = 0;
     occur[(int)str[i]] = i;
   }
+  *len2 = simplifyRules(render, len);
   return render;
 }
 
-/* Naive algorithm for p-strings */
 void naiveAlgorithm(int *xP, int *yP, int m, int n) {
   int i, j;
   int c = 0;
@@ -53,63 +83,50 @@ void naiveAlgorithm(int *xP, int *yP, int m, int n) {
   printf("]\nNaive algorithm: %d(search) + %d(preCompute) == %d\n\n", c, m+n, c+m+n);
 }
 
-/* KMP precompute array of next prefix */
-int *preKMP(int *x, int m) {
-  int i, idx;
-  int *T;
+void preKMP(int *xP, int m, int **kmpNext) {
+  int i, j, *kNext = *kmpNext;
 
-  if ((T = malloc(sizeof(*T) * m)) == NULL)
-    return NULL;
-  T[0] = idx = 0;
-  for (i = 1; i < m; ++i) {
-    if (x[i] == x[idx])
-      T[i] = ++idx;
-    else
-      T[i] = idx = 0;
+  i = 0;
+  j = kNext[0] = -1;
+  while (i < m) {
+    while (j > -1 && xP[i] != xP[j])
+      j = kNext[j];
+    ++i;
+    ++j;
+    kNext[i] = (xP[i] == xP[j] ? kNext[j] : j);
   }
-  return T;
 }
 
-/* KMP algorithm for p-strings */
-void KMPAlgorithm(int *xP, int *yP, int m, int n) {
-  int i = 0, j;
-  int *T = preKMP(xP, m);
-  int c = 0;
-  int matchNb = 0;
+void KMP(int *xP, int m, int m2, int *yP, int n) {
+  int i, j;
+  int *kmpNext = malloc(sizeof(int) * m2);
 
-  printf("matchs: [");
-  for (j = 0; j < n - m + 1; ++j) {
-    for (; i < m && j < n - m + 1; ++i) {
-      ++c;
-      if (!(xP[i] == yP[j+i] || (!xP[i] && yP[j+i] >= m - i)))
-	break;
+  preKMP(xP, m2, &kmpNext);
+  i = j = 0;
+  while (j < n) {
+    while (i > -1 && xP[i] != yP[j] && !(!xP[i] && yP[j] >= m - i))
+      i = kmpNext[i];
+    i++;
+    j++;
+    if (i >= m2) {
+      printf("occurrence:%d\n", j - i);
+      i = kmpNext[i];
     }
-    if (i == m) {
-      if (matchNb)
-	printf(", ");
-      printf("%d", j);
-      ++matchNb;
-    }
-    else if (i)
-      j += i - T[i - 1] - 1;
-    i = (i == m || !i ? 0 : T[i - 1]);
   }
-  printf("]\nKMP algorithm: %d(search) + %d(preCompute) == %d\n\n", c, m+m+n, c+m+m+n);
 }
 
 int main(int ac, char **av) {
   int *xP, *yP;
-  int m, n;
+  int m, n, m2;
 
   if (ac != 3)
     printf("usage: ./search PATTERN TEXT\n");
   else {
     m = strlen(av[1]);
     n = strlen(av[2]);
-    xP = preCompute(av[1], m);
-    yP = preCompute(av[2], n);
-    naiveAlgorithm(xP, yP, m, n);
-    KMPAlgorithm(xP, yP, m, n);
+    xP = preCompute(av[1], m, &m2);
+    yP = preCompute(av[2], n, &n);
+    KMP(xP, m, m2, yP, n);
   }
   return 0;
 }

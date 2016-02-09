@@ -1,7 +1,7 @@
 NAME		=search
 SRCS		=main.c
 OBJS		=$(SRCS:.c=.o)
-CFLAGS		=-Wall -Wextra -ansi -pedantic
+CFLAGS		=-Wall -Wextra -ansi -pedantic -std=c11 -g
 CC		=gcc
 RM		=rm -fv
 
