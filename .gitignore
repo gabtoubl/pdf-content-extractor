@@ -1,3 +1,6 @@
-search
+tests
 *~
 *.o
+flex.[ch]
+bison.[ch]
+pdfContentExtractor

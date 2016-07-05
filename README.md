@@ -1,10 +1,8 @@
-# Parametrized Pattern Matching
+# PDF Content Extractor
 
-Search a PATTERN with one bijection or substitution allowed, meaning "axollot" will match "blessed" with a->b, x->l, o->e, l->s and t->d.
-
-Currently implementing classic search algorithm (naive, KMP) to search for those match.
+TODO
 
 usage:
 
  * make
- * ./search PATTERN TEXT
+ * ./pdfContentExtractor FILE
