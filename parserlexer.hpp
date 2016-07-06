@@ -3,8 +3,6 @@
 
 using namespace std;
 
-void yyerror(const char *);
-
 class Obj {
 public:
   Obj(int id, int genId) :_id(id), _genId(genId) {}
@@ -16,5 +14,8 @@ private:
 };
 ostream& operator<<(ostream&, const Obj&);
 
+void yyerror(const char *);
+
+void reset_initial_state();
 
 #endif /* !PARSERLEXER_HPP_ */

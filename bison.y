@@ -7,6 +7,7 @@
 
   using namespace std;
   vector<Obj> objList;
+  char *currentFile = NULL;
 %}
 %union  {
   char c;
@@ -16,7 +17,6 @@
   float f;
 };
 %token <s> VERSION
-%token COMMENT
 %token OBJ
 %token ENDOBJ
 %token <b> BOOL
@@ -45,7 +45,6 @@ File:		Header
 		XrefTable
 		Trailer;
 Header:		VERSION {cout << "VERSION '"<< $1 << "'" << endl;}
-		COMMENT {cout << "COMMENT" << endl;}
 Body:		Objects;
 Objects:	| Objects Object;
 Object:		NB NB OBJ {objList.push_back(Obj($1, $2));}
@@ -86,7 +85,8 @@ Trailer:	TRAILER {cout << "TRAILER " << endl;}
 %%
 
 void yyerror(const char *s) {
-  fprintf(stderr, "Error with parsing: %s\n", s);
+  cerr << "Error with parsing of " << currentFile << ": " << s << endl;
+  currentFile = NULL;
 }
 
 ostream& operator<<(ostream &os, const Obj &obj) {
@@ -95,7 +95,7 @@ ostream& operator<<(ostream &os, const Obj &obj) {
 }
 
 static int printHelp() {
-  cout << "usage: ./pdfContentExtractor FILE" << endl;
+  cout << "usage: ./pdfContentExtractor FILE1 [FILE2 FILE3 ...]" << endl;
   return 1;
 }
 
@@ -104,16 +104,43 @@ static int printError() {
   return 1;
 }
 
-// pdftk fichier.pdf output fichierout.pdf
+static void parsePDF(int fileNb, char **files, vector<string> &okFiles) {
+  string cmd;
+  for (int i = 1; i < fileNb; ++i) {
+    currentFile = files[i];
+    cmd = "pdftk \"";
+    cmd += files[i];
+    cmd += "\" output /tmp/fixed.pdf";
+    if (system(cmd.c_str()))
+      break;
+    if(!(yyin = fopen("/tmp/fixed.pdf", "r"))) {
+      printError();
+      break;
+    }
+    yyparse();
+    if (currentFile)
+      okFiles.push_back(currentFile);
+    else
+      break;
+    reset_initial_state();
+  }
+}
+
 int main(int ac, char **av) {
+  vector<string> okFiles;
+
   yyin = NULL;
   yyout = stdout;
-  if (ac != 2)
+  if (ac < 2)
     return printHelp();
-  if (!(yyin = fopen(av[1], "r")))
-    return printError();
-  yyparse();
+  parsePDF(ac, av, okFiles);
+  cerr << "Files that were parsed correctly:" << endl;
+  for (auto &file : okFiles)
+    cerr << file << endl;
+  cerr << "Ratio: "<< okFiles.size() << "/" << ac - 1 << " (" << okFiles.size()*100 / (ac - 1) << "%)" << endl;
+  /*
   for (auto &o : objList)
     cerr << o << endl;
+	    */
   return 0;
 }
