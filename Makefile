@@ -1,7 +1,7 @@
 NAME			=pdfContentExtractor
 CC              	=g++
 CFLAGS          	=-Wall -Wextra -ansi -pedantic -Wno-sign-compare -Werror -std=c++11 -O3
-LDFLAGS			=-lfl
+LDFLAGS			=-lfl -lz
 LEX			=flex
 LFLAGS			=-D_POSIX_C_SOURCE=200809L
 BISON			=bison

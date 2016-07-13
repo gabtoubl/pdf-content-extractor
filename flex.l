@@ -12,12 +12,15 @@
   using namespace std;
 
   static void switch_state(int);
+  static int prev_yyleng;
 %}
 
 %x header
 %x body bodyObj bodyObjArr bodyObjDic bodyObjStream bodyObjInd
 %x xref xrefSection xrefField
 %x trailer eof
+
+%x textStream
 
 %%
 .                                {yyless(0); yy_push_state(header);}
@@ -31,7 +34,7 @@
 <body>obj                        {yy_push_state(bodyObj); return OBJ;}
 <body>[^t]xref                   {switch_state(xref); return XREF;}
 
-<bodyObj>stream                  {yy_push_state(bodyObjStream); return STREAM;}
+<bodyObj>stream\n                {yy_push_state(bodyObjStream); return STREAM;}
 <bodyObj>endobj                  {yy_pop_state(); return ENDOBJ;}
 
 <bodyObj,bodyObjArr,bodyObjDic>{
@@ -48,8 +51,8 @@
     \>\>                         {yy_pop_state(); return ENDDIC;}
 }
 
-<bodyObjStream>endstream\ *\r?\n {yy_pop_state(); yylval.s = yytext; return ENDSTREAM;}
-<bodyObjStream>.*\r?\n           {yymore();}
+<bodyObjStream>endstream\ *\r?\n {yy_pop_state(); yylval.s = yytext; yyleng = prev_yyleng - 1; return ENDSTREAM;}
+<bodyObjStream>.*\r?\n           {yymore(); prev_yyleng = yyleng - 1;}
 
 <bodyObjInd>[0-9]+               {yylval.i = atoi(yytext); return NB;}
 <bodyObjInd>R                    {yy_pop_state(); return ENDIND;}
