@@ -14,13 +14,11 @@ public:
   Obj() {_content.clear();_stream = "";}
   ~Obj() {}
   template<typename T>
-  void add(T content, eType type, size_t size = 0) {
+  void add(T content, eType type) {
     void *newContent;
-    if (!size)
-      size = sizeof(T);
-    if (!(newContent = malloc(size)))
+    if (!(newContent = malloc(sizeof(T))))
       return;
-    memcpy(newContent, &content, size);
+    memcpy(newContent, &content, sizeof(T));
     _content.push_back(make_pair(type, newContent));
   }
   void addStream(string stream) {_stream = stream;}
@@ -45,6 +43,7 @@ private:
 };
 
 void yyerror(const char *);
+void set_text_stream_state();
 void reset_initial_state();
 
 #endif /* !PARSERLEXER_HPP_ */

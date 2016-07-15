@@ -44,9 +44,16 @@
 %token TRAILER
 %token STARTXREF
 %token ENDOFFILE
+%token OP_TF
+%token OP_TD
+%token OP_TJ
+%token BEGINTXT
+%token ENDTXT
 
+%start File
 %%
-File:		Header
+File:		PdfFile | StreamFile;
+PdfFile:       	Header
 		Body
 		XrefTable
 		Trailer;
@@ -91,6 +98,25 @@ Trailer:	TRAILER {objStack.push(&trailerObj);}
 		STARTXREF
 		NB
 		ENDOFFILE {objStack.pop();};
+
+StreamFile:	TxtBlocks;
+
+TxtBlocks:	| TxtBlocks TxtBlock;
+
+TxtBlock:	BEGINTXT {cerr << "Begin Text Block" << endl;}
+		Commands
+		ENDTXT {cerr << "End Text Block" << endl;};
+Commands:	| Commands Command;
+Command:	NAME FLOAT OP_TF {cerr<<"Font command: Name: "<<$1 << ", size: "<<$2<<endl;}
+		| FLOAT FLOAT OP_TD {cerr<<"New line command: Offsets: "<<$1 << "/"<<$2<<endl;}
+		| ARR {cerr << "Print whole array command: [";}
+		TxtArrContents
+		ENDARR
+		OP_TJ {cerr<<"]"<<endl;};
+TxtArrContents:	| TxtArrContents TxtArrContent;
+TxtArrContent:	STRING {cerr<< "String: "<<$1<<", ";}
+		| FLOAT STRING{cerr<< "String: "<<$2<<" with Offset:"<<$1<<",";};
+
 %%
 
 
@@ -197,15 +223,17 @@ static int parsePDF(int fileNb, char **files) {
     if(!(yyin = fopen("/tmp/fixed.pdf", "rb")))
       return printError(i);
     yyparse();
-    fclose(yyin);
     if (!currentFile)
       return i;
-    reset_initial_state();
-    if(!(contentsFile = tmpfile()))
+    if(!(contentsFile = fopen("/tmp/kawaidesune", "wb+"))) // tmpfile() after debug
       return printError(i);
     cout << "[OK]" << endl;
     followTrailer(trailerObj, 0);
-    fclose(contentsFile);
+    rewind(contentsFile);
+    set_text_stream_state();
+    yyin = contentsFile;
+    yyparse();
+    reset_initial_state();
   }
   return fileNb;
 }
