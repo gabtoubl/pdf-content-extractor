@@ -1,9 +1,9 @@
 #ifndef PARSERLEXER_HPP_
 # define PARSERLEXER_HPP_
 
-#include <cstring>
+#include <string>
 #include <vector>
-#include <type_traits>
+#include <cstring>
 
 using namespace std;
 
@@ -11,8 +11,8 @@ typedef enum {TBOOL, TNB, TFLOAT, TNAME, TSTRING, TARR, TDIC, TNIL, TIND} eType;
 
 class Obj {
 public:
-  Obj() {_content.clear();_stream = "";}
-  ~Obj() {}
+  Obj();
+  ~Obj();
   template<typename T>
   void add(T content, eType type) {
     void *newContent;
@@ -21,11 +21,11 @@ public:
     memcpy(newContent, &content, sizeof(T));
     _content.push_back(make_pair(type, newContent));
   }
-  void addStream(string stream) {_stream = stream;}
-  eType type() const {return _content.size() ?_content.back().first : TNIL;}
-  void *content() const {return _content.size() ? _content.back().second : NULL;}
-  string stream() const {return _stream;}
-  const vector<pair<eType, void*> > &contents() const {return _content;}
+  void addStream(string stream);
+  eType type() const;
+  void *content() const;
+  string stream() const;
+  const vector<pair<eType, void*> > &contents() const;
 protected:
   vector<pair<eType, void*> > _content;
   string _stream;
@@ -35,7 +35,7 @@ class Arr : public Obj {};
 
 class Dic : public Obj {
 public:
-  Dic() :Obj() {_rules.clear();_stream = "";}
+  Dic() :Obj() {_rules.clear();}
   void addRule(string rule) {_rules.push_back(rule);}
   vector<string> rules() const {return _rules;}
 private:

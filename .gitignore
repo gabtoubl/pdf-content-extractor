@@ -1,6 +1,6 @@
 tests
 *~
 *.o
-flex.[ch]
-bison.[ch]
+flex.[ch]pp
+bison.[ch]pp
 pdfContentExtractor

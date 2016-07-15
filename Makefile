@@ -1,6 +1,10 @@
 NAME			=pdfContentExtractor
+SRCS			=flex.cpp	\
+			 bison.cpp	\
+			 obj.cpp
+OBJS			=$(SRCS:.cpp=.o)
 CC              	=g++
-CFLAGS          	=-Wall -Wextra -ansi -pedantic -Wno-sign-compare -Werror -std=c++11 -O3
+CFLAGS          	=-Wall -Wextra -ansi -pedantic -Wno-sign-compare -Werror -std=c++11 -g
 LDFLAGS			=-lfl -lz
 LEX			=flex
 LFLAGS			=-D_POSIX_C_SOURCE=200809L
@@ -9,23 +13,23 @@ RM			=rm -f
 
 all:			$(NAME)
 
-$(NAME):		flex.o bison.o
+$(NAME):		flex.o bison.o $(OBJS)
 			$(CC) $^ -o $@ $(LDFLAGS)
 
-flex.c:			flex.l bison.h
+flex.cpp:		flex.l bison.hpp
 			$(LEX) -o $@ $(LFLAGS) $<
 
-flex.h:			flex.l
-			$(LEX) -o flex.c --header-file=$@ $(LFLAGS) $<
+flex.hpp:		flex.l
+			$(LEX) -o flex.cpp --header-file=$@ $(LFLAGS) $<
 
-bison.c bison.h:	bison.y flex.h
-			$(BISON) $< -o bison.c -d
+bison.cpp bison.hpp:	bison.y flex.hpp
+			$(BISON) $< -o bison.cpp -d
 
-%.o:			%.c
-			$(CC) $(CFLAGS)  $< -c
+%.o:			%.cpp
+			$(CC) -c $< $(CFLAGS)
 
 clean:
-			$(RM) flex.o flex.c flex.h bison.o bison.c bison.h
+			$(RM) flex.[ch]pp bison.[ch]pp $(OBJS)
 
 fclean:			clean
 			$(RM) $(NAME)

@@ -7,7 +7,7 @@
 %{
   #include <iostream>
   #include "parserlexer.hpp"
-  #include "bison.h"
+  #include "bison.hpp"
 
   using namespace std;
 
@@ -46,8 +46,8 @@ str  \((\\\)|[^)])*\)
     {nb}                         {yylval.i = atoi(yytext); return NB;}
     {flt}                        {yylval.f = atof(yytext); return FLOAT;}
     [0-9]+\ [0-9]+\ R            {yyless(0); yy_push_state(bodyObjInd); return IND;}
-    {name}                       {yylval.s = strdup(yytext); return NAME;}
-    \(.*\)|\<\>|\<[^<>][^>]*\>   {yylval.s = strdup(yytext); return STRING;}
+    {name}                       {yylval.s = yytext; return NAME;}
+    \(.*\)|\<\>|\<[^<>][^>]*\>   {yylval.s = yytext; return STRING;}
     \[                           {yy_push_state(bodyObjArr); return ARR;}
     \]                           {yy_pop_state(); return ENDARR;}
     \<\<                         {yy_push_state(bodyObjDic); return DIC;}

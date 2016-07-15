@@ -1,12 +1,10 @@
 %{
   #include <iostream>
-  #include <vector>
   #include <stack>
   #include <map>
-  #include <string>
   #include "zlib.h"
   #include "parserlexer.hpp"
-  #include "flex.h"
+  #include "flex.hpp"
 
   using namespace std;
   map<pair<int, int>, Obj> objHash;
@@ -68,18 +66,18 @@ Contents:	| Contents Content;
 Content:	BOOL {objStack.top()->add<bool>($1, TBOOL);}
 		| NB {objStack.top()->add<int>($1, TNB);}
 		| FLOAT {objStack.top()->add<float>($1, TFLOAT);}
-		| NAME {objStack.top()->add<char*>($1, TNAME);}
-		| STRING {objStack.top()->add<char*>($1, TSTRING);}
+		| NAME {objStack.top()->add<string>(string($1, yyleng+1), TNAME);}
+		| STRING {objStack.top()->add<string>(string($1, yyleng+1), TSTRING);}
 		| Array
 		| Dictionary Stream
 		| NIL {objStack.top()->add<void*>(NULL, TNIL);}
 		| IND NB NB ENDIND {objStack.top()->add<pair<int,int> >(make_pair($2,$3),TIND);}
-Array:		ARR {objStack.top()->add<Arr>(Arr(), TARR);
-		  objStack.push((Arr*)objStack.top()->content());}
+Array:		ARR {objStack.top()->add<Arr*>(new Arr(), TARR);
+		  objStack.push(*(Arr**)objStack.top()->content());}
 		Contents
 		ENDARR {objStack.pop();};
-Dictionary:	DIC {objStack.top()->add<Dic>(Dic(), TDIC);
-		  objStack.push((Dic*)objStack.top()->content());}
+Dictionary:	DIC {objStack.top()->add<Dic*>(new Dic(), TDIC);
+		  objStack.push(*(Dic**)objStack.top()->content());}
 		DicRules
 		ENDDIC {objStack.pop();};
 DicRules:	| DicRules DicRule;
@@ -118,8 +116,6 @@ TxtArrContent:	STRING {cerr<< "String: "<<$1<<", ";}
 		| FLOAT STRING{cerr<< "String: "<<$2<<" with Offset:"<<$1<<",";};
 
 %%
-
-
 
 void yyerror(const char *s) {
   cerr << "Error with parsing of " << currentFile << ": " << s << endl;
@@ -178,7 +174,7 @@ static int printError(int returnCode = 1) {
 
 static void followTrailer(Obj &obj, int rulePos) {
   string rules[] = {"/Root", "/Pages", "/Contents", "/Length"};
-  Dic *objDic = (Dic*)obj.content();
+  Dic *objDic = *(Dic**)obj.content();
   int i = 0;
 
   for (auto const &rule : objDic->rules()) {
@@ -191,7 +187,7 @@ static void followTrailer(Obj &obj, int rulePos) {
 	followTrailer(objHash[*xy], rulePos + 1);
       }
       else if (type == TARR) {
-	Arr *arr = (Arr*)(objDic->contents()[i].second);
+	Arr *arr = *(Arr**)(objDic->contents()[i].second);
 	for (auto const &item : arr->contents()) {
 	  pair<int, int> *xy = (pair<int,int>*)item.second;
 	  followTrailer(objHash[*xy], rulePos + 1);
@@ -212,6 +208,7 @@ static void followTrailer(Obj &obj, int rulePos) {
 
 static int parsePDF(int fileNb, char **files) {
   string cmd;
+
   for (int i = 1; i < fileNb; ++i) {
     currentFile = files[i];
     cout << currentFile << "... ";
@@ -235,14 +232,13 @@ static int parsePDF(int fileNb, char **files) {
     yyparse();
     reset_initial_state();
   }
+  fclose(contentsFile);
   return fileNb;
 }
 
 int main(int ac, char **av) {
   int okFiles;
 
-  yyin = NULL;
-  yyout = stdout;
   if (ac < 2)
     return printHelp();
   cout << "Files that were parsed correctly:" << endl;
@@ -250,5 +246,6 @@ int main(int ac, char **av) {
   if (okFiles != ac)
     cout << "[ERROR]" << endl;
   cout << "Ratio: "<< okFiles - 1 << "/" << ac - 1 << " (" << (okFiles - 1)*100 / (ac - 1) << "%)" << endl;
+  yylex_destroy();
   return 0;
 }
