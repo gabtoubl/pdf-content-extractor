@@ -4,7 +4,7 @@ SRCS			=flex.cpp	\
 			 obj.cpp
 OBJS			=$(SRCS:.cpp=.o)
 CC              	=g++
-CFLAGS          	=-Wall -Wextra -ansi -pedantic -Wno-sign-compare -Werror -std=c++11 -g
+CFLAGS          	=-Wall -Wextra -ansi -pedantic -Wno-sign-compare -Werror -std=c++11 -O3
 LDFLAGS			=-lfl -lz
 LEX			=flex
 LFLAGS			=-D_POSIX_C_SOURCE=200809L

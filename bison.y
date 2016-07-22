@@ -11,7 +11,10 @@
   Obj trailerObj;
   stack<Obj*> objStack;
   char *currentFile = NULL;
+  string extractedText = "";
   FILE *compressedFile, *contentsFile;
+  float lastX = -1, lastY = -1;
+  float abs(float);
 %}
 %union  {
   char c;
@@ -42,9 +45,11 @@
 %token TRAILER
 %token STARTXREF
 %token ENDOFFILE
-%token OP_TF
-%token OP_TD
-%token OP_TJ
+%token OP_FONT
+%token OP_NEWLINE
+%token OP_PRINTARR
+%token OP_PRINT
+%token OP_MATRIX
 %token BEGINTXT
 %token ENDTXT
 
@@ -98,24 +103,32 @@ Trailer:	TRAILER {objStack.push(&trailerObj);}
 		ENDOFFILE {objStack.pop();};
 
 StreamFile:	TxtBlocks;
-
 TxtBlocks:	| TxtBlocks TxtBlock;
-
 TxtBlock:	BEGINTXT {cerr << "Begin Text Block" << endl;}
 		Commands
 		ENDTXT {cerr << "End Text Block" << endl;};
 Commands:	| Commands Command;
-Command:	NAME FLOAT OP_TF {cerr<<"Font command: Name: "<<$1 << ", size: "<<$2<<endl;}
-		| FLOAT FLOAT OP_TD {cerr<<"New line command: Offsets: "<<$1 << "/"<<$2<<endl;}
+Command:	NAME FLOAT OP_FONT {cerr<<"Font command: Name: "<< $1 << ", size: "<<$2<<endl;}
+		| FLOAT FLOAT OP_NEWLINE {if (extractedText != "")extractedText += "\n"; cerr<<"New line command: Offsets: "<<$1 << "/"<<$2<<endl;}
+                | STRING {extractedText+=string($1+1, yyleng-2);cerr<<"Print one text: "<<$1<<endl;} OP_PRINT
+		| FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT OP_MATRIX {
+		  cerr<<"New text Matrix: "<<$1<<" "<<$2<<" "<<$3<<" "<<$4<<" "<<$5<<" "<<$6<<" ----> "<<lastY<<" vs "<<$6<<endl;
+		  if (lastY >= 0)
+		    extractedText += abs(lastY-$6) > 10 ? "\n" : abs(lastX-$5) > 10 ? " " : "";
+		  lastX=$5; lastY=$6;}
 		| ARR {cerr << "Print whole array command: [";}
 		TxtArrContents
 		ENDARR
-		OP_TJ {cerr<<"]"<<endl;};
+		OP_PRINTARR {cerr<<"]"<<endl;};
 TxtArrContents:	| TxtArrContents TxtArrContent;
-TxtArrContent:	STRING {cerr<< "String: "<<$1<<", ";}
-		| FLOAT STRING{cerr<< "String: "<<$2<<" with Offset:"<<$1<<",";};
+TxtArrContent:  STRING {extractedText += string($1+1, yyleng-2); cerr<< "String: "<<$1<<", ";}
+		| FLOAT {if ($1 < -70)extractedText += " ";cerr<< "Offset:"<<$1<<", ";}
 
 %%
+
+float abs(float val) {
+  return val > 0 ? val : -val;
+}
 
 void yyerror(const char *s) {
   cerr << "Error with parsing of " << currentFile << ": " << s << endl;
@@ -163,12 +176,12 @@ int inflate(FILE *source, FILE *dest)
 }
 
 static int printHelp() {
-  cout << "usage: ./pdfContentExtractor FILE1 [FILE2 FILE3 ...]" << endl;
+  cerr << "usage: ./pdfContentExtractor FILE1 [FILE2 FILE3 ...]" << endl;
   return 1;
 }
 
 static int printError(int returnCode = 1) {
-  cout << "error: " << strerror(errno) << endl;
+  cerr << "error: " << strerror(errno) << endl;
   return returnCode;
 }
 
@@ -211,6 +224,7 @@ static int parsePDF(int fileNb, char **files) {
 
   for (int i = 1; i < fileNb; ++i) {
     currentFile = files[i];
+    extractedText = "";
     cout << currentFile << "... ";
     cmd = "pdftk \"";
     cmd += files[i];
@@ -224,13 +238,16 @@ static int parsePDF(int fileNb, char **files) {
       return i;
     if(!(contentsFile = fopen("/tmp/kawaidesune", "wb+"))) // tmpfile() after debug
       return printError(i);
-    cout << "[OK]" << endl;
     followTrailer(trailerObj, 0);
     rewind(contentsFile);
     set_text_stream_state();
     yyin = contentsFile;
     yyparse();
     reset_initial_state();
+    cerr << "Extracted text:\n" << extractedText << endl;
+    if (!currentFile)
+      return i;
+    cout << "[OK]" << endl;
   }
   fclose(contentsFile);
   return fileNb;
