@@ -84,10 +84,10 @@ str  \((\\\)|[^)])*\)
 <txtStream>BT                    {yy_push_state(txtStreamText); return BEGINTXT;}
 
 <txtStreamText>{
-    ({anb}[ \n]*)*T[fd]          |
+    ({anb}[ \n]*)*T[fdm]         |
     {str}[ \n]*Tj                |
     {name}[ \n]*{anb}[ \n]*Tf    |
-    \[                           {yyless(0); yy_push_state(txtStreamRule);}
+    \[[^\]]*\][ \n]*TJ           {yyless(0); yy_push_state(txtStreamRule);}
     ET                           {return pop_tok(ENDTXT);}
 }
 

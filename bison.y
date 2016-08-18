@@ -11,10 +11,14 @@
   Obj trailerObj;
   stack<Obj*> objStack;
   char *currentFile = NULL;
-  string extractedText = "";
-  FILE *compressedFile, *contentsFile;
-  float lastX = -1, lastY = -1;
+  string extractedText = "", fontName = "";
+  FILE *compressedFile, *contentsFile, *outFile;
+  float lastX = -1, lastY = -1, maxY = -1, lineX = -1, lineY = -1;
+  bool isParagraph = false;
+
   float abs(float);
+  void addLine();
+  void closeParagraph();
 %}
 %union  {
   char c;
@@ -104,25 +108,30 @@ Trailer:	TRAILER {objStack.push(&trailerObj);}
 
 StreamFile:	TxtBlocks;
 TxtBlocks:	| TxtBlocks TxtBlock;
-TxtBlock:	BEGINTXT {cerr << "Begin Text Block" << endl;}
+TxtBlock:	BEGINTXT
 		Commands
-		ENDTXT {cerr << "End Text Block" << endl;};
+		ENDTXT
 Commands:	| Commands Command;
-Command:	NAME FLOAT OP_FONT {cerr<<"Font command: Name: "<< $1 << ", size: "<<$2<<endl;}
-		| FLOAT FLOAT OP_NEWLINE {if (extractedText != "")extractedText += "\n"; cerr<<"New line command: Offsets: "<<$1 << "/"<<$2<<endl;}
-                | STRING {extractedText+=string($1+1, yyleng-2);cerr<<"Print one text: "<<$1<<endl;} OP_PRINT
+Command:	NAME FLOAT OP_FONT {fontName = $1;}
+		| FLOAT FLOAT OP_NEWLINE {addLine();}
+		| STRING {extractedText += string($1+1, yyleng-2);} OP_PRINT
 		| FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT OP_MATRIX {
-		  cerr<<"New text Matrix: "<<$1<<" "<<$2<<" "<<$3<<" "<<$4<<" "<<$5<<" "<<$6<<" ----> "<<lastY<<" vs "<<$6<<endl;
-		  if (lastY >= 0)
-		    extractedText += abs(lastY-$6) > 10 ? "\n" : abs(lastX-$5) > 10 ? " " : "";
+                  if (lastY >= 0) {
+		    if (abs(lastY - $6 > 10))
+                      addLine();
+		    if (abs(lastY - $6 > 30))
+                      closeParagraph();
+		    if (abs(lastX - $5 > 10))
+                      extractedText += " ";
+                  }
+                  maxY = lastY < 0 ? $6 : maxY;
+                  lineX = lineX < 0 ? $5 : lineX;
+                  lineY = lineY < 0 ? $6 : lineY;
 		  lastX=$5; lastY=$6;}
-		| ARR {cerr << "Print whole array command: [";}
-		TxtArrContents
-		ENDARR
-		OP_PRINTARR {cerr<<"]"<<endl;};
+		| ARR TxtArrContents ENDARR OP_PRINTARR
 TxtArrContents:	| TxtArrContents TxtArrContent;
-TxtArrContent:  STRING {extractedText += string($1+1, yyleng-2); cerr<< "String: "<<$1<<", ";}
-		| FLOAT {if ($1 < -70)extractedText += " ";cerr<< "Offset:"<<$1<<", ";}
+TxtArrContent:  STRING {extractedText += string($1+1, yyleng-2);}
+		| FLOAT {if ($1 < -70)extractedText += " ";}
 
 %%
 
@@ -185,6 +194,8 @@ static int printError(int returnCode = 1) {
   return returnCode;
 }
 
+void f() {}
+
 static void followTrailer(Obj &obj, int rulePos) {
   string rules[] = {"/Root", "/Pages", "/Contents", "/Length"};
   Dic *objDic = *(Dic**)obj.content();
@@ -195,6 +206,22 @@ static void followTrailer(Obj &obj, int rulePos) {
       if (rule == "/Kids")
 	--rulePos;
       eType type = objDic->contents()[i].first;
+      int j = 0;
+      for (auto const &r : objDic->rules()) {
+	if (r == "/Type")
+	  {
+	    f();
+	    string *typeValue = (string*)(objDic->contents()[j].second);
+	    cout << "lol:"<<r<<":"<<j << endl;
+	    if (*typeValue == "/Page")
+	      cout << "one page here" << endl;
+	    else {
+	      if (objDic->contents()[j].first == TNAME)
+	      cout << *typeValue <<endl;
+	    }
+	  }
+	++j;
+      }
       if (type == TIND) {
 	pair<int, int> *xy = (pair<int,int>*)(objDic->contents()[i].second);
 	followTrailer(objHash[*xy], rulePos + 1);
@@ -219,13 +246,59 @@ static void followTrailer(Obj &obj, int rulePos) {
   }
 }
 
+void initHTML(FILE *outFile) {
+  string outContent = "<!DOCTYPE HTML><html><head><title>";
+
+  outContent += currentFile;
+  outContent += " - Extracted Content</title></head><body>";
+  fwrite(outContent.c_str(), 1, outContent.length(), outFile);
+}
+
+void addLine() {
+  string divText = "";
+  static int ParentX, ParentY;
+
+  if (!isParagraph) {
+    isParagraph = true;
+    divText += "<div class='paragraph' ";
+    divText += "style='width: 100%;";
+    divText += "position:absolute; left: ";
+    divText += to_string((int)lineX);
+    divText += "px; top: ";
+    divText += to_string(10 + (int)(maxY - lineY));
+    divText += "px;'>";
+    ParentX = (int)lineX;
+    ParentY = (int)(maxY - lineY);
+  }
+  divText += "<div class='line' ";
+  divText += "style='position:absolute; left: ";
+  divText += to_string((int)lineX - ParentX);
+  divText += "px; top: ";
+  divText += to_string((int)(maxY - lineY) - ParentY);
+  divText += "px;'>";
+  divText += extractedText;
+  divText += "</div>";
+  fwrite(divText.c_str(), 1, divText.length(), outFile);
+  extractedText = "";
+  lineX = -1;
+  lineY = -1;
+}
+
+void closeParagraph() {
+  string divText = "";
+
+  isParagraph = false;
+  fwrite("</div>", 1, 6, outFile);
+}
+
 static int parsePDF(int fileNb, char **files) {
-  string cmd;
+  string cmd, outFileName;
 
   for (int i = 1; i < fileNb; ++i) {
-    currentFile = files[i];
+    outFileName = currentFile = files[i];
+    outFileName += ".html";
     extractedText = "";
-    cout << currentFile << "... ";
+    cout << currentFile << "...";
     cmd = "pdftk \"";
     cmd += files[i];
     cmd += "\" output /tmp/fixed.pdf";
@@ -238,16 +311,22 @@ static int parsePDF(int fileNb, char **files) {
       return i;
     if(!(contentsFile = fopen("/tmp/kawaidesune", "wb+"))) // tmpfile() after debug
       return printError(i);
+    cout << " OK";
     followTrailer(trailerObj, 0);
     rewind(contentsFile);
     set_text_stream_state();
+    //    if (!(outFile = fopen(outFileName, "wb+")))
+    if (!(outFile = fopen("swag.html", "wb+")))
+      return printError(i);
+    initHTML(outFile);
     yyin = contentsFile;
     yyparse();
     reset_initial_state();
-    cerr << "Extracted text:\n" << extractedText << endl;
+    fwrite("</body></html>", 1, 14, outFile);
+    fclose(outFile);
     if (!currentFile)
       return i;
-    cout << "[OK]" << endl;
+    cout << " OK" << endl;
   }
   fclose(contentsFile);
   return fileNb;
@@ -261,7 +340,7 @@ int main(int ac, char **av) {
   cout << "Files that were parsed correctly:" << endl;
   okFiles = parsePDF(ac, av);
   if (okFiles != ac)
-    cout << "[ERROR]" << endl;
+    cout << " ERROR!" << endl;
   cout << "Ratio: "<< okFiles - 1 << "/" << ac - 1 << " (" << (okFiles - 1)*100 / (ac - 1) << "%)" << endl;
   yylex_destroy();
   return 0;
