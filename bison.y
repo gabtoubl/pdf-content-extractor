@@ -2,6 +2,7 @@
   #include <iostream>
   #include <stack>
   #include <map>
+  #include <cassert>
   #include "zlib.h"
   #include "parserlexer.hpp"
   #include "flex.hpp"
@@ -12,13 +13,17 @@
   stack<Obj*> objStack;
   char *currentFile = NULL;
   string extractedText = "", fontName = "";
-  FILE *compressedFile, *contentsFile, *outFile;
-  float lastX = -1, lastY = -1, maxY = -1, lineX = -1, lineY = -1;
-  bool isParagraph = false;
+  FILE *outFile;
+  float lastX = -1, lastY = -1, leftX = 0, bottomY = 0;
+  float paraX = -1, paraY = -1;
+  bool isParagraph = false, isPage = false;
 
   float abs(float);
   void addLine();
+  void addParagraph();
   void closeParagraph();
+  void addPage();
+  void closePage();
 %}
 %union  {
   char c;
@@ -50,7 +55,7 @@
 %token STARTXREF
 %token ENDOFFILE
 %token OP_FONT
-%token OP_NEWLINE
+%token OP_NEWPOS
 %token OP_PRINTARR
 %token OP_PRINT
 %token OP_MATRIX
@@ -60,11 +65,11 @@
 %start File
 %%
 File:		PdfFile | StreamFile;
-PdfFile:       	Header
+PdfFile:	Header
 		Body
 		XrefTable
 		Trailer;
-Header:		VERSION
+Header:		VERSION;
 Body:		Objects;
 Objects:	| Objects Object;
 Object:		NB NB OBJ {objHash[make_pair($1, $2)] = Obj();
@@ -75,12 +80,12 @@ Contents:	| Contents Content;
 Content:	BOOL {objStack.top()->add<bool>($1, TBOOL);}
 		| NB {objStack.top()->add<int>($1, TNB);}
 		| FLOAT {objStack.top()->add<float>($1, TFLOAT);}
-		| NAME {objStack.top()->add<string>(string($1, yyleng+1), TNAME);}
-		| STRING {objStack.top()->add<string>(string($1, yyleng+1), TSTRING);}
+		| NAME {objStack.top()->add<char*>($1, TNAME);}
+		| STRING {objStack.top()->add<char*>($1, TSTRING);}
 		| Array
 		| Dictionary Stream
 		| NIL {objStack.top()->add<void*>(NULL, TNIL);}
-		| IND NB NB ENDIND {objStack.top()->add<pair<int,int> >(make_pair($2,$3),TIND);}
+		| IND NB NB ENDIND {objStack.top()->add<pair<int,int> >(make_pair($2,$3),TIND);};
 Array:		ARR {objStack.top()->add<Arr*>(new Arr(), TARR);
 		  objStack.push(*(Arr**)objStack.top()->content());}
 		Contents
@@ -92,7 +97,7 @@ Dictionary:	DIC {objStack.top()->add<Dic*>(new Dic(), TDIC);
 DicRules:	| DicRules DicRule;
 DicRule:	NAME {((Dic*)objStack.top())->addRule($1);}
 		Content;
-Stream:		| STREAM ENDSTREAM {objStack.top()->addStream(string($2, yyleng+1));};
+Stream:		| STREAM ENDSTREAM {objStack.top()->addStream(string($2, yyleng + 1));};
 XrefTable:	XREF
 		XrefSections;
 XrefSections:	| XrefSections XrefSection;
@@ -110,28 +115,34 @@ StreamFile:	TxtBlocks;
 TxtBlocks:	| TxtBlocks TxtBlock;
 TxtBlock:	BEGINTXT
 		Commands
-		ENDTXT
+		ENDTXT;
 Commands:	| Commands Command;
 Command:	NAME FLOAT OP_FONT {fontName = $1;}
-		| FLOAT FLOAT OP_NEWLINE {addLine();}
+		| FLOAT FLOAT OP_NEWPOS {
+		  leftX += $1; bottomY += $2;
+		  if (abs($2) > 10)
+		    addLine();
+		  if (abs($2) > 30 && isParagraph)
+		    closeParagraph();
+		  if (abs($1) > 10)
+		    extractedText += " ";
+		  lastX = leftX; lastY = bottomY;}
 		| STRING {extractedText += string($1+1, yyleng-2);} OP_PRINT
 		| FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT OP_MATRIX {
-                  if (lastY >= 0) {
+		  if (lastY >= 0) {
 		    if (abs(lastY - $6 > 10))
-                      addLine();
+		      addLine();
 		    if (abs(lastY - $6 > 30))
-                      closeParagraph();
+		      closeParagraph();
 		    if (abs(lastX - $5 > 10))
-                      extractedText += " ";
-                  }
-                  maxY = lastY < 0 ? $6 : maxY;
-                  lineX = lineX < 0 ? $5 : lineX;
-                  lineY = lineY < 0 ? $6 : lineY;
-		  lastX=$5; lastY=$6;}
-		| ARR TxtArrContents ENDARR OP_PRINTARR
+		      extractedText += " ";
+		  }
+		  lastX = $5; lastY = $6;
+		  leftX = $5; bottomY = $6;}
+		| ARR TxtArrContents ENDARR OP_PRINTARR;
 TxtArrContents:	| TxtArrContents TxtArrContent;
-TxtArrContent:  STRING {extractedText += string($1+1, yyleng-2);}
-		| FLOAT {if ($1 < -70)extractedText += " ";}
+TxtArrContent:	STRING {extractedText += string($1+1, yyleng-2);}
+		| FLOAT {if ($1 < -70) extractedText += " ";}
 
 %%
 
@@ -171,8 +182,15 @@ int inflate(FILE *source, FILE *dest)
       strm.avail_out = 16384;
       strm.next_out = out;
       ret = inflate(&strm, Z_NO_FLUSH);
-      if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_ERRNO)
+      assert(ret != Z_STREAM_ERROR);
+      switch (ret) {
+      case Z_NEED_DICT:
+	ret = Z_DATA_ERROR;
+      case Z_DATA_ERROR:
+      case Z_MEM_ERROR:
+	inflateEnd(&strm);
 	return ret;
+      }
       have = 16384 - strm.avail_out;
       if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
 	inflateEnd(&strm);
@@ -194,8 +212,6 @@ static int printError(int returnCode = 1) {
   return returnCode;
 }
 
-void f() {}
-
 static void followTrailer(Obj &obj, int rulePos) {
   string rules[] = {"/Root", "/Pages", "/Contents", "/Length"};
   Dic *objDic = *(Dic**)obj.content();
@@ -208,18 +224,10 @@ static void followTrailer(Obj &obj, int rulePos) {
       eType type = objDic->contents()[i].first;
       int j = 0;
       for (auto const &r : objDic->rules()) {
-	if (r == "/Type")
-	  {
-	    f();
-	    string *typeValue = (string*)(objDic->contents()[j].second);
-	    cout << "lol:"<<r<<":"<<j << endl;
-	    if (*typeValue == "/Page")
-	      cout << "one page here" << endl;
-	    else {
-	      if (objDic->contents()[j].first == TNAME)
-	      cout << *typeValue <<endl;
-	    }
-	  }
+	if (r == "/Type" && !strcmp(*(char**)(objDic->contents()[j].second), "/Page")) {
+	  addPage();
+	  isPage = true;
+	}
 	++j;
       }
       if (type == TIND) {
@@ -234,60 +242,102 @@ static void followTrailer(Obj &obj, int rulePos) {
 	}
       }
       else if (type == TNB) {
-	if (!(compressedFile = tmpfile()))
-	  return (void)printError;
+	FILE *compressedFile, *textFile;
+	if (!(compressedFile = tmpfile()) || !(textFile = tmpfile()))
+	  return (void)printError();
 	fwrite(obj.stream().c_str(), 1, obj.stream().length(), compressedFile);
 	rewind(compressedFile);
-	inflate(compressedFile, contentsFile);
+	inflate(compressedFile, textFile);
+	rewind(textFile);
+	set_text_stream_state();
+	yyin = textFile;
+	yyparse();
+	reset_initial_state();
 	fclose(compressedFile);
+	fclose(textFile);
       }
+      if (isPage)
+	closePage();
     }
     ++i;
   }
 }
 
-void initHTML(FILE *outFile) {
+static void initHTML() {
   string outContent = "<!DOCTYPE HTML><html><head><title>";
 
   outContent += currentFile;
-  outContent += " - Extracted Content</title></head><body>";
+  outContent += " - Extracted Content</title><style>";
+  outContent += ".page            {border: 1px dashed blue; width:21cm; height: 29.7cm; margin: auto; position: relative;}";
+  outContent += ".paragraph       {position: absolute; width: 100%}";
+  outContent += ".line            {position: absolute;}";
+  outContent += ".line:hover      {border: 1px dashed green;}";
+  outContent += "</style></head><body style='margin:0'>";
+  fwrite(outContent.c_str(), 1, outContent.length(), outFile);
+}
+
+static void endHTML() {
+  string outContent = "";
+
+  outContent += "</body></html>";
   fwrite(outContent.c_str(), 1, outContent.length(), outFile);
 }
 
 void addLine() {
   string divText = "";
-  static int ParentX, ParentY;
-
-  if (!isParagraph) {
-    isParagraph = true;
-    divText += "<div class='paragraph' ";
-    divText += "style='width: 100%;";
-    divText += "position:absolute; left: ";
-    divText += to_string((int)lineX);
-    divText += "px; top: ";
-    divText += to_string(10 + (int)(maxY - lineY));
-    divText += "px;'>";
-    ParentX = (int)lineX;
-    ParentY = (int)(maxY - lineY);
-  }
+  if (extractedText == "")
+    return ;
+  if (!isParagraph)
+    addParagraph();
   divText += "<div class='line' ";
-  divText += "style='position:absolute; left: ";
-  divText += to_string((int)lineX - ParentX);
-  divText += "px; top: ";
-  divText += to_string((int)(maxY - lineY) - ParentY);
+  divText += "style='left: ";
+  divText += to_string((int)(leftX - paraX));
+  divText += "px; bottom: ";
+  divText += to_string((int)(bottomY - paraY));
   divText += "px;'>";
   divText += extractedText;
   divText += "</div>";
   fwrite(divText.c_str(), 1, divText.length(), outFile);
   extractedText = "";
-  lineX = -1;
-  lineY = -1;
+}
+
+void addParagraph() {
+  string divText = "";
+
+  if (isParagraph)
+    closeParagraph();
+  isParagraph = true;
+  divText += "<div class='paragraph' ";
+  divText += "style='left: ";
+  divText += to_string((int)leftX);
+  divText += "px; bottom: ";
+  divText += to_string((int)bottomY);
+  divText += "px;'>";
+  fwrite(divText.c_str(), 1, divText.length(), outFile);
+  paraX = leftX;
+  paraY = bottomY;
 }
 
 void closeParagraph() {
+  if (!isParagraph)
+    return ;
+  isParagraph = false;
+  fwrite("</div>", 1, 6, outFile);
+}
+
+void addPage() {
   string divText = "";
 
-  isParagraph = false;
+  leftX = 0;
+  bottomY = 0;
+  divText += "<div class='page'>";
+  fwrite(divText.c_str(), 1, divText.length(), outFile);
+}
+
+void closePage() {
+  isPage = false;
+  if (isParagraph)
+    closeParagraph();
   fwrite("</div>", 1, 6, outFile);
 }
 
@@ -304,31 +354,22 @@ static int parsePDF(int fileNb, char **files) {
     cmd += "\" output /tmp/fixed.pdf";
     if (system(cmd.c_str()))
       return i;
-    if(!(yyin = fopen("/tmp/fixed.pdf", "rb")))
+    if (!(yyin = fopen("/tmp/fixed.pdf", "rb")))
       return printError(i);
     yyparse();
     if (!currentFile)
       return i;
-    if(!(contentsFile = fopen("/tmp/kawaidesune", "wb+"))) // tmpfile() after debug
-      return printError(i);
     cout << " OK";
-    followTrailer(trailerObj, 0);
-    rewind(contentsFile);
-    set_text_stream_state();
-    //    if (!(outFile = fopen(outFileName, "wb+")))
-    if (!(outFile = fopen("swag.html", "wb+")))
+    if (!(outFile = fopen(outFileName.c_str(), "wb+")))
       return printError(i);
-    initHTML(outFile);
-    yyin = contentsFile;
-    yyparse();
-    reset_initial_state();
-    fwrite("</body></html>", 1, 14, outFile);
+    initHTML();
+    followTrailer(trailerObj, 0);
+    endHTML();
     fclose(outFile);
     if (!currentFile)
       return i;
     cout << " OK" << endl;
   }
-  fclose(contentsFile);
   return fileNb;
 }
 

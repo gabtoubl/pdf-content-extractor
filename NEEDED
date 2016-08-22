@@ -1,0 +1,7 @@
+programme:
+parse le fichier pdf
+extrait tout les "streams" de texte (predecoupage en page de texte ici)
+decrypte les streams
+parse les fichiers decryptés
+obtention du texte positionné
+decoupage en paragraphe et lignes de texte

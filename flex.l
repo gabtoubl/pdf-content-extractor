@@ -30,7 +30,7 @@ str  \((\\\)|[^)])*\)
 %%
 .                                {yyless(0); yy_push_state(header);}
 
-<header>%PDF-[0-9]\.[0-9]        {yylval.s = yytext + 5; return VERSION;}
+<header>%PDF-[0-9]\.[0-9]        {yylval.s = strdup(yytext + 5); return VERSION;}
 <header>%[^!-~]*
 <header>[^\n\r]                  {yyless(0); switch_state(body);}
 
@@ -48,8 +48,8 @@ str  \((\\\)|[^)])*\)
     {nb}                         {yylval.i = atoi(yytext); return NB;}
     {flt}                        {yylval.f = atof(yytext); return FLOAT;}
     [0-9]+\ [0-9]+\ R            {yyless(0); yy_push_state(bodyObjInd); return IND;}
-    {name}                       {yylval.s = yytext; return NAME;}
-    \(.*\)|\<\>|\<[^<>][^>]*\>   {yylval.s = yytext; return STRING;}
+    {name}                       {yylval.s = strdup(yytext); return NAME;}
+    \(.*\)|\<\>|\<[^<>][^>]*\>   {yylval.s = strdup(yytext); return STRING;}
     \[                           {yy_push_state(bodyObjArr); return ARR;}
     \]                           {return pop_tok(ENDARR);}
     \<\<                         {yy_push_state(bodyObjDic); return DIC;}
@@ -57,7 +57,7 @@ str  \((\\\)|[^)])*\)
 }
 
 <bodyObjStream>endstream\ *\r?\n {yylval.s = yytext; yyleng = prev_yyleng - 1; return pop_tok(ENDSTREAM);}
-<bodyObjStream>.*\r?\n           {yymore(); prev_yyleng = yyleng - 1;}
+<bodyObjStream>.*\r?\n           {yymore(); prev_yyleng = yyleng;}
 
 <bodyObjInd>[0-9]+               {yylval.i = atoi(yytext); return NB;}
 <bodyObjInd>R                    {return pop_tok(ENDIND);}
@@ -92,13 +92,13 @@ str  \((\\\)|[^)])*\)
 }
 
 <txtStreamRule>{anb}            {yylval.f = atof(yytext); return FLOAT;}
-<txtStreamRule>{name}           {yylval.s = strdup(yytext); return NAME; /* no strdup later */}
+<txtStreamRule>{name}           {yylval.s = strdup(yytext); return NAME;}
 <txtStreamRule>{str}            {yylval.s = strdup(yytext); return STRING;}
 <txtStreamRule>\[               {return ARR;}
 <txtStreamRule>\]               {return ENDARR;}
 <txtStreamRule>{
     Tf                          {return pop_tok(OP_FONT);}
-    Td                          {return pop_tok(OP_NEWLINE);}
+    Td                          {return pop_tok(OP_NEWPOS);}
     TJ                          {return pop_tok(OP_PRINTARR);}
     Tj                          {return pop_tok(OP_PRINT);}
     Tm                          {return pop_tok(OP_MATRIX);}

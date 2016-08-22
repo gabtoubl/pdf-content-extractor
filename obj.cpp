@@ -11,7 +11,7 @@ Obj::~Obj() {
       delete *((Dic**)obj.second);
     else if (obj.first == TARR)
       delete *((Arr**)obj.second);
-    free(obj.second);
+    //free(obj.second);
   }
 }
 
