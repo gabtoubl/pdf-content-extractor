@@ -113,7 +113,7 @@ Trailer:	TRAILER {objStack.push(&trailerObj);}
 
 StreamFile:	TxtBlocks;
 TxtBlocks:	| TxtBlocks TxtBlock;
-TxtBlock:	BEGINTXT
+TxtBlock:	BEGINTXT {leftX = 0; bottomY = 0;}
 		Commands
 		ENDTXT;
 Commands:	| Commands Command;
@@ -127,7 +127,10 @@ Command:	NAME FLOAT OP_FONT {fontName = $1;}
 		  if (abs($1) > 10)
 		    extractedText += " ";
 		  lastX = leftX; lastY = bottomY;}
-		| STRING {extractedText += string($1+1, yyleng-2);} OP_PRINT
+		| STRING {string t($1+1, yyleng-2);
+		  if (t >= "\\000" && t <= "\\999")
+		    t=t.c_str() + 4;
+		  extractedText += t;} OP_PRINT
 		| FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT OP_MATRIX {
 		  if (lastY >= 0) {
 		    if (abs(lastY - $6 > 10))
@@ -141,7 +144,11 @@ Command:	NAME FLOAT OP_FONT {fontName = $1;}
 		  leftX = $5; bottomY = $6;}
 		| ARR TxtArrContents ENDARR OP_PRINTARR;
 TxtArrContents:	| TxtArrContents TxtArrContent;
-TxtArrContent:	STRING {extractedText += string($1+1, yyleng-2);}
+TxtArrContent:	STRING {string t($1+1, yyleng-2);
+		  if (t >= "\\000" && t <= "\\999")
+		    t=t.c_str() + 4;
+		  extractedText += t;
+		}
 		| FLOAT {if ($1 < -70) extractedText += " ";}
 
 %%
@@ -292,9 +299,9 @@ void addLine() {
   divText += "<div class='line' ";
   divText += "style='left: ";
   divText += to_string((int)(leftX - paraX));
-  divText += "px; bottom: ";
+  divText += "pt; bottom: ";
   divText += to_string((int)(bottomY - paraY));
-  divText += "px;'>";
+  divText += "pt;'>";
   divText += extractedText;
   divText += "</div>";
   fwrite(divText.c_str(), 1, divText.length(), outFile);
@@ -310,9 +317,9 @@ void addParagraph() {
   divText += "<div class='paragraph' ";
   divText += "style='left: ";
   divText += to_string((int)leftX);
-  divText += "px; bottom: ";
+  divText += "pt; bottom: ";
   divText += to_string((int)bottomY);
-  divText += "px;'>";
+  divText += "pt;'>";
   fwrite(divText.c_str(), 1, divText.length(), outFile);
   paraX = leftX;
   paraY = bottomY;
@@ -328,8 +335,6 @@ void closeParagraph() {
 void addPage() {
   string divText = "";
 
-  leftX = 0;
-  bottomY = 0;
   divText += "<div class='page'>";
   fwrite(divText.c_str(), 1, divText.length(), outFile);
 }
